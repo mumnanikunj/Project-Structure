@@ -1,0 +1,26 @@
+/* eslint-disable @typescript-eslint/no-var-requires */
+export const SvgImage = {
+    CameraPreviewImage: require('./camera_overlay_img.svg').default,
+    cornerTopLeft: require('./c_top_left.svg').default,
+    cornerTopRight: require('./c_top_right.svg').default,
+    cornerBottomRight: require('./c_bottom_right.svg').default,
+    cornerBottomLeft: require('./c_bottom_left.svg').default,
+    nextIcon: require('./next_black_bg.svg').default,
+    loader_circle: require('./loader_circle.svg').default,
+    prevIcon: require('./prev_back_bg.svg').default,
+    warning: require('./warning.svg').default,
+    add: require('./add.svg').default,
+    minus: require('./minus.svg').default,
+    like: require('./like.svg').default,
+    videoFavorite: require('./video_fav.svg').default,
+    videoFavoriteNot: require('./video_fav_not.svg').default,
+    play: require('./play.svg').default,
+    back_vector : require('./back_vector').default,
+    flag_vector : require('./flag_vector').default,
+    share_vector: require('./share_vector').default,
+    shot_frame : require('./shot_frame').default,
+    cross: require('./cross.svg').default,
+    play_svg : require('./play.svg').default,
+    globe_light : require('./globe_light.svg').default, 
+    SheetLine : require('./sheet_line.svg').default    
+}

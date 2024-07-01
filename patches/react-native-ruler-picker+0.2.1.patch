@@ -1,0 +1,468 @@
+diff --git a/node_modules/react-native-ruler-picker/src/.DS_Store b/node_modules/react-native-ruler-picker/src/.DS_Store
+new file mode 100644
+index 0000000..e69de29
+diff --git a/node_modules/react-native-ruler-picker/src/components/RulerPicker.tsx b/node_modules/react-native-ruler-picker/src/components/RulerPicker.tsx
+index 2dd82da..53ad4ec 100644
+--- a/node_modules/react-native-ruler-picker/src/components/RulerPicker.tsx
++++ b/node_modules/react-native-ruler-picker/src/components/RulerPicker.tsx
+@@ -7,20 +7,23 @@ import {
+   Text,
+   Animated,
+   TextInput,
++  ScrollView,
++  TouchableOpacity,
+ } from 'react-native';
+-import type { NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
++import { NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
+ 
+ import { AnimatedFlashList, ListRenderItem } from '@shopify/flash-list';
+ 
+ import { RulerPickerItem, RulerPickerItemProps } from './RulerPickerItem';
+ import { calculateCurrentValue } from '../utils/';
++import _ from 'lodash';
+ 
+ export type RulerPickerTextProps = Pick<
+   TextStyle,
+   'color' | 'fontSize' | 'fontWeight'
+ >;
+ 
+-const { width: windowWidth } = Dimensions.get('window');
++const { width: windowWidth, height: windowHeight } = Dimensions.get('window');
+ 
+ export type RulerPickerProps = {
+   /**
+@@ -28,9 +31,10 @@ export type RulerPickerProps = {
+    * @default windowWidth
+    */
+   width?: number;
++  valueUnitTextStyle?: any
+   /**
+    * Height of the ruler picker
+-   * @default 500
++   * @default windowHeight
+    */
+   height?: number;
+   /**
+@@ -39,6 +43,11 @@ export type RulerPickerProps = {
+    * @default 0
+    */
+   min: number;
++  type: 'distance' | 'deviation' | 'height' | 'age' | 'score'
++  startFeet?: number;
++  startInches?: number;
++  endFeet?: number;
++  endInches?: number;
+   /**
+    * Maximum value of the ruler picker
+    *
+@@ -81,6 +90,7 @@ export type RulerPickerProps = {
+    * @default 'black'
+    */
+   indicatorColor?: string;
++  placeHolder?: string
+   /**
+    * Text style of the value
+    */
+@@ -116,15 +126,53 @@ export type RulerPickerProps = {
+   onValueChangeEnd?: (value: string) => void;
+ } & Partial<RulerPickerItemProps>;
+ 
++const generateArray = (start, end, dynamicValue) => {
++  const array = Array.from({ length: Math.abs(start) + end + 1 }, (_, index) => {
++    const value = index - Math.abs(start);
++    if (value < 0) {
++      return { index, data: `${Math.abs(value)}${dynamicValue[0]}` };
++    } else if (value === 0) {
++      return { index, data: "0" };
++    } else {
++      return { index, data: `${value}${dynamicValue[1]}` };
++    }
++  });
++  return array;
++};
++const heigthConvert = (startFeet, startInches, endFeet, endInches) => {
++  // console.log('Values===>',startFeet,startInches,endFeet,endInches,)
++  const startTotalInches = startFeet * 12 + startInches;
++  const endTotalInches = endFeet * 12 + endInches;
++
++  // Create the array
++  const array = [];
++  let count = 0;
++  for (let totalInches = startTotalInches; totalInches <= endTotalInches; totalInches++) {
++    const feet = Math.floor(totalInches / 12);
++    const inches = totalInches % 12;
++    array.push({ index: count, data: `${feet}'${inches}` });
++    count++;
++  }
++  return array
++}
++
+ export const RulerPicker = ({
+   width = windowWidth,
+-  height = 500,
++  height = 150,
+   min,
+   max,
+   step = 1,
+-  initialValue = min,
++  startFeet,
++  startInches,
++  endFeet,
++  endInches,
++  initialValue = 0,
+   fractionDigits = 1,
++  selectedValue = 0,
++  previousValue = 0,
++  placeHolder = "",
+   unit = 'cm',
++  type = 'distance',
+   indicatorHeight = 80,
+   gapBetweenSteps = 10,
+   shortStepHeight = 20,
+@@ -134,21 +182,38 @@ export const RulerPicker = ({
+   shortStepColor = 'lightgray',
+   longStepColor = 'darkgray',
+   valueTextStyle,
++  valueUnitTextStyle,
+   unitTextStyle,
+   decelerationRate = 'normal',
+   onValueChange,
+   onValueChangeEnd,
+ }: RulerPickerProps) => {
+   const itemAmount = (max - min) / step;
+-  const arrData = Array.from({ length: itemAmount + 1 }, (_, index) => index);
++  const arrData = type === "distance" ? Array.from({ length: itemAmount + 1 }, (_, index) => index) :
++    type === 'height' ? heigthConvert(startFeet, startInches, endFeet, endInches) :
++      type === 'age' ? Array.from({ length: itemAmount + 1 }, (_, index) => index) :
++        type === 'score' ? Array.from({ length: itemAmount + 1 }, (_, index) => index) :
++          generateArray(-min, max, ['L', 'R']);
+ 
+   const stepTextRef = useRef<TextInput>(null);
++  const stepValueUnityRef = useRef<TextInput>(null);
++  const refSelectValue = useRef<string>("");
++  const refSelectDeviation = useRef<string>("");
++  const refSelectHeight = useRef<string>("");
+   const prevValue = useRef<string>(initialValue.toFixed(fractionDigits));
+   const prevMomentumValue = useRef<string>(
+     initialValue.toFixed(fractionDigits)
+   );
+   const scrollPosition = useRef(new Animated.Value(0)).current;
+ 
++  const convertHeightToCm = useCallback((feet, inches) => {
++    let totalInches = feet * 12;
++    totalInches += inches;
++    let cm = Math.round((totalInches * 2.54));
++    return `${cm} cm`;
++  }, [])
++
++  let temp = 0
+   const valueCallback: Animated.ValueListenerCallback = useCallback(
+     ({ value }) => {
+       const newStep = calculateCurrentValue(
+@@ -158,14 +223,51 @@ export const RulerPicker = ({
+         min,
+         max,
+         step,
+-        fractionDigits
++        fractionDigits,
+       );
++      if (type === "distance") {
++        if (prevValue.current !== newStep) {
++          onValueChange?.(newStep);
++          stepValueUnityRef.current?.setNativeProps({ text: '' });
++          stepTextRef.current?.setNativeProps({ text: newStep });
++          refSelectValue.current = newStep
++        }
++      }
++      else if (type === 'height') {
++        try {
++          const index = Math.round(value / (stepWidth + gapBetweenSteps));
++          stepTextRef.current?.setNativeProps({ text: `${arrData[index].data}` });
++          const cmConvert = arrData[index].data.split("\'")
++          console.log("arrDataValueConvert.. ", cmConvert[0] + "  " + cmConvert[1])
++          stepValueUnityRef.current?.setNativeProps({
++            text: `  (${convertHeightToCm(_.toNumber(cmConvert[0]), _.toNumber(cmConvert[1]))})`
++          });
++          onValueChange?.(newStep);
++          refSelectHeight.current = arrData[index].data
++        } catch (error) {
+ 
+-      if (prevValue.current !== newStep) {
++        }
++      } else if (type === 'age') {
+         onValueChange?.(newStep);
++        stepValueUnityRef.current?.setNativeProps({ text: '' });
+         stepTextRef.current?.setNativeProps({ text: newStep });
++        refSelectValue.current = newStep
++      } else if (type === 'score') {
++        onValueChange?.(newStep);
++        stepValueUnityRef.current?.setNativeProps({ text: '' });
++        stepTextRef.current?.setNativeProps({ text: newStep });
++        refSelectValue.current = newStep
+       }
++      else {
++        try {
++          const index = Math.round(value / (stepWidth + gapBetweenSteps));
++          stepValueUnityRef.current?.setNativeProps({ text: '' });
++          stepTextRef.current?.setNativeProps({ text: arrData[index].data });
++          refSelectDeviation.current = arrData[index].data
++        } catch (error) {
+ 
++        }
++      }
+       prevValue.current = newStep;
+     },
+     [fractionDigits, gapBetweenSteps, stepWidth, max, min, onValueChange, step]
+@@ -202,16 +304,24 @@ export const RulerPicker = ({
+   const renderItem: ListRenderItem<unknown> = useCallback(
+     ({ index }) => {
+       return (
+-        <RulerPickerItem
+-          isLast={index === arrData.length - 1}
+-          index={index}
+-          shortStepHeight={shortStepHeight}
+-          longStepHeight={longStepHeight}
+-          gapBetweenSteps={gapBetweenSteps}
+-          stepWidth={stepWidth}
+-          shortStepColor={shortStepColor}
+-          longStepColor={longStepColor}
+-        />
++        <View>
++          <TouchableOpacity activeOpacity={1} style={{ height: 150 }}>
++            <RulerPickerItem
++              isLast={index === arrData.length - 1}
++              index={index}
++              min={min}
++              type={type}
++              previousValue={previousValue}
++              shortStepHeight={shortStepHeight}
++              longStepHeight={longStepHeight}
++              gapBetweenSteps={gapBetweenSteps}
++              stepWidth={stepWidth}
++              shortStepColor={shortStepColor}
++              longStepColor={longStepColor}
++              arrData={arrData}
++            />
++          </TouchableOpacity>
++        </View>
+       );
+     },
+     [
+@@ -222,6 +332,7 @@ export const RulerPicker = ({
+       longStepHeight,
+       shortStepColor,
+       shortStepHeight,
++      previousValue
+     ]
+   );
+ 
+@@ -236,9 +347,20 @@ export const RulerPicker = ({
+         step,
+         fractionDigits
+       );
++      if (type === "height") {
++        onValueChangeEnd?.({ newStep: refSelectHeight.current, type: type });
++      }
++      else if (type === 'age') {
++        onValueChangeEnd?.({ newStep, type: type });
++      }
++      else if (prevMomentumValue.current !== newStep) {
++        if (type === "distance" || type === 'score') {
++          onValueChangeEnd?.({ newStep, type: type });
++        }
+ 
+-      if (prevMomentumValue.current !== newStep) {
+-        onValueChangeEnd?.(newStep);
++        else {
++          onValueChangeEnd?.({ newStep: refSelectDeviation.current, type: type });
++        }
+       }
+ 
+       prevMomentumValue.current = newStep;
+@@ -276,6 +398,7 @@ export const RulerPicker = ({
+         showsHorizontalScrollIndicator={false}
+         showsVerticalScrollIndicator={false}
+         horizontal
++
+       />
+       <View
+         pointerEvents="none"
+@@ -309,18 +432,28 @@ export const RulerPicker = ({
+             },
+           ]}
+         >
+-          <TextInput
+-            ref={stepTextRef}
+-            defaultValue={initialValue.toFixed(fractionDigits)}
+-            style={[
+-              {
+-                lineHeight:
+-                  valueTextStyle?.fontSize ?? styles.valueText.fontSize,
+-              },
+-              styles.valueText,
+-              valueTextStyle,
+-            ]}
+-          />
++          <View style={{ flexDirection: 'row' }}>
++            <TextInput
++              ref={stepTextRef}
++              defaultValue={placeHolder || initialValue.toFixed(fractionDigits)}
++              style={[
++                {
++                  lineHeight:
++                    valueTextStyle?.fontSize ?? styles.valueText.fontSize,
++                },
++                styles.valueText,
++                valueTextStyle,
++              ]}
++            />
++            <TextInput
++              ref={stepValueUnityRef}
++              defaultValue={''}
++              style={[
++                styles.valueUnitTextStyle,
++                valueUnitTextStyle
++              ]}
++            />
++          </View>
+           {unit && (
+             <Text
+               style={[
+@@ -342,6 +475,8 @@ export const RulerPicker = ({
+               width: stepWidth,
+               height: indicatorHeight,
+               backgroundColor: indicatorColor,
++              paddingHorizontal: 1.5,
++              borderRadius: 5
+             },
+           ]}
+         />
+@@ -370,6 +505,9 @@ const styles = StyleSheet.create({
+     margin: 0,
+     padding: 0,
+   },
++  valueUnitTextStyle: {
++    color: 'white',
++  },
+   unitText: {
+     color: 'black',
+     fontSize: 24,
+diff --git a/node_modules/react-native-ruler-picker/src/components/RulerPickerItem.tsx b/node_modules/react-native-ruler-picker/src/components/RulerPickerItem.tsx
+index e95a6d7..295cb01 100644
+--- a/node_modules/react-native-ruler-picker/src/components/RulerPickerItem.tsx
++++ b/node_modules/react-native-ruler-picker/src/components/RulerPickerItem.tsx
+@@ -1,6 +1,7 @@
+ /* eslint-disable react-native/no-inline-styles */
++import _ from 'lodash';
+ import React from 'react';
+-import { View } from 'react-native';
++import { View, Text } from 'react-native';
+ 
+ export type RulerPickerItemProps = {
+   /**
+@@ -39,50 +40,87 @@ export type RulerPickerItemProps = {
+    * @default 'gray'
+    */
+   longStepColor: string;
++  previousValue: string
++
++  arrData: any
+ };
+ 
+ type Props = {
+   index: number;
+   isLast: boolean;
++  arrData: any
++  min: number
++  type: 'distance' | 'deviation' | 'height' | 'age' | 'score';
+ } & RulerPickerItemProps;
+ 
+ export const RulerPickerItem = React.memo(
+   ({
++    arrData,
+     isLast,
+     index,
++    min,
+     gapBetweenSteps,
+     shortStepHeight,
+     longStepHeight,
+     stepWidth,
+     shortStepColor,
+     longStepColor,
++    previousValue,
++    type,
+   }: Props) => {
+-    const isLong = index % 10 === 0;
++    const isLong = index % ((type === "distance") ? 10 : type === 'height' ? 12 : type === 'age' ? 10 :type === 'score'? 10 : 5) === 0;
+     const height = isLong ? longStepHeight : shortStepHeight;
+ 
++    const marginConvert = (arrData, type, index) => {
++      if (type == "age") {
++        return -4;
++      }  
++      if (type == "height") {
++        return -10;
++      }  else {
++        if((type == "distance" && index == 0) || arrData[index].data == 0){
++          return -4
++        }
++        return -10;
++      }
++    }
++
+     return (
+-      <View
+-        style={[
+-          {
+-            width: stepWidth,
+-            height: '100%',
+-            justifyContent: 'center',
+-            marginRight: isLast ? 0 : gapBetweenSteps,
+-            marginTop: shortStepHeight,
+-          },
+-        ]}
+-      >
++      <>
+         <View
+           style={[
+             {
+-              width: '100%',
+-              height: height,
+-              backgroundColor: isLong ? longStepColor : shortStepColor,
+-              marginTop: isLong ? 0 : shortStepHeight,
++              width: stepWidth,
++              height: '100%',
++              justifyContent: 'center',
++              marginRight: isLast ? 0 : gapBetweenSteps,
+             },
+           ]}
+-        />
+-      </View>
++        >
++          <View>
++            <View
++              style={[
++                {
++                  width: '100%',
++                  height: height,
++                  backgroundColor: isLong ? (index + min) == _.toNumber(previousValue) ? "white" : longStepColor :
++                    (index + min) == _.toNumber(previousValue) ? "white" : shortStepColor,
++                },
++              ]}
++            />
++            {(type === 'distance' ? index % 10 === 0 : type === 'height' ? index % 12 === 0 :type === 'age' ?  index % 10 === 0 : type ==='score' ? index % 10 === 0 : index % 5 === 0) && <Text style={{
++              color: index + min == _.toNumber(previousValue) ? "white" : 'rgba(94, 129, 110, 1)',
++              fontWeight: '600',
++              position: 'absolute',
++              bottom: -20,
++              marginStart: marginConvert(arrData, type, index)
++              , fontSize: 13, width: 40
++            }}>
++              {type === 'distance'? index + min : type === 'age'? index + min : type === 'score'? index + min : arrData[index].data}
++            </Text>}
++          </View>
++        </View>
++      </>
+     );
+   }
+ );

@@ -1,0 +1,13 @@
+diff --git a/node_modules/react-native-vision-camera/ios/Extensions/AVCaptureOutput+mirror.swift b/node_modules/react-native-vision-camera/ios/Extensions/AVCaptureOutput+mirror.swift
+index 63910cd..d97e992 100644
+--- a/node_modules/react-native-vision-camera/ios/Extensions/AVCaptureOutput+mirror.swift
++++ b/node_modules/react-native-vision-camera/ios/Extensions/AVCaptureOutput+mirror.swift
+@@ -16,7 +16,7 @@ extension AVCaptureOutput {
+     for connection in connections {
+       if connection.isVideoMirroringSupported {
+         connection.automaticallyAdjustsVideoMirroring = false
+-        connection.isVideoMirrored = true
++        connection.isVideoMirrored = false
+       }
+     }
+   }
